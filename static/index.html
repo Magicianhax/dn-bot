@@ -1,0 +1,309 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ethereal Trading Dashboard</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div class="dashboard">
+        <!-- Header -->
+        <header class="header">
+            <div class="logo">
+                <span class="logo-icon">◇</span>
+                <span class="logo-text">ETHEREAL</span>
+                <span class="logo-badge">TRADER</span>
+            </div>
+            <div class="header-status">
+                <div class="status-indicator" id="bot-status">
+                    <span class="status-dot"></span>
+                    <span class="status-text">OFFLINE</span>
+                </div>
+                <div class="ws-indicator" id="ws-status">
+                    <span class="ws-dot"></span>
+                    <span>WS</span>
+                </div>
+            </div>
+        </header>
+
+        <!-- Main Grid -->
+        <main class="main-grid">
+            <!-- Left Column: Controls & Accounts -->
+            <aside class="sidebar">
+                <!-- Bot Controls -->
+                <section class="card controls-card">
+                    <h3 class="card-title">
+                        <span class="icon">⚡</span>
+                        Bot Control
+                    </h3>
+                    <div class="control-buttons">
+                        <button id="btn-start" class="btn btn-success">
+                            <span>▶</span> START
+                        </button>
+                        <button id="btn-stop" class="btn btn-danger" disabled>
+                            <span>■</span> STOP
+                        </button>
+                        <button id="btn-close-all" class="btn btn-warning">
+                            <span>✕</span> CLOSE ALL
+                        </button>
+                    </div>
+                </section>
+
+                <!-- Account Cards -->
+                <section class="card account-card">
+                    <h3 class="card-title">
+                        <span class="icon">👤</span>
+                        Account 1
+                    </h3>
+                    <div class="account-balance">
+                        <span class="balance-label">Balance</span>
+                        <span class="balance-value" id="acc1-balance">$0.00</span>
+                    </div>
+                    <div class="account-positions" id="acc1-positions">
+                        <div class="no-positions">No positions</div>
+                    </div>
+                </section>
+
+                <section class="card account-card">
+                    <h3 class="card-title">
+                        <span class="icon">👤</span>
+                        Account 2
+                    </h3>
+                    <div class="account-balance">
+                        <span class="balance-label">Balance</span>
+                        <span class="balance-value" id="acc2-balance">$0.00</span>
+                    </div>
+                    <div class="account-positions" id="acc2-positions">
+                        <div class="no-positions">No positions</div>
+                    </div>
+                </section>
+
+                <!-- Settings -->
+                <section class="card settings-card">
+                    <h3 class="card-title">
+                        <span class="icon">⚙</span>
+                        Settings
+                        <button class="btn-edit" id="btn-edit-settings" title="Edit Settings">✎</button>
+                    </h3>
+                    <div class="settings-grid">
+                        <div class="setting-item" data-setting="trading_pairs">
+                            <span class="setting-label">Pairs</span>
+                            <span class="setting-value" id="setting-pairs">-</span>
+                        </div>
+                        <div class="setting-item" data-setting="position_size">
+                            <span class="setting-label">Position</span>
+                            <span class="setting-value" id="setting-position">$0</span>
+                        </div>
+                        <div class="setting-item" data-setting="leverage">
+                            <span class="setting-label">Leverage</span>
+                            <span class="setting-value" id="setting-leverage">0x</span>
+                        </div>
+                        <div class="setting-item" data-setting="sltp">
+                            <span class="setting-label">SL / TP</span>
+                            <span class="setting-value" id="setting-sltp">0% / 0%</span>
+                        </div>
+                        <div class="setting-item" data-setting="hold_time">
+                            <span class="setting-label">Hold Time</span>
+                            <span class="setting-value" id="setting-hold">0-0m</span>
+                        </div>
+                        <div class="setting-item" data-setting="max_trades">
+                            <span class="setting-label">Max Trades</span>
+                            <span class="setting-value" id="setting-max-trades">0</span>
+                        </div>
+                    </div>
+                </section>
+            </aside>
+
+            <!-- Center: Stats & Active Trade -->
+            <section class="center-panel">
+                <!-- Stats Row -->
+                <div class="stats-row">
+                    <div class="stat-card">
+                        <div class="stat-label">Total PnL</div>
+                        <div class="stat-value" id="stat-pnl">$0.00</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-label">Total Volume</div>
+                        <div class="stat-value" id="stat-volume">$0.00</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-label">Buy Volume</div>
+                        <div class="stat-value" id="stat-buy-vol">$0.00</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-label">Sell Volume</div>
+                        <div class="stat-value" id="stat-sell-vol">$0.00</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-label">Total Trades</div>
+                        <div class="stat-value" id="stat-trades">0</div>
+                    </div>
+                </div>
+
+                <!-- Active Trade -->
+                <div class="card active-trade-card">
+                    <h3 class="card-title">
+                        <span class="icon">📊</span>
+                        Active Trade
+                    </h3>
+                    <div id="active-trade-content">
+                        <div class="no-trade">No active trade</div>
+                    </div>
+                </div>
+
+                <!-- Prices -->
+                <div class="card prices-card">
+                    <h3 class="card-title">
+                        <span class="icon">💰</span>
+                        Market Prices
+                    </h3>
+                    <div class="prices-grid" id="prices-grid">
+                        <div class="price-item">
+                            <span class="price-ticker">BTC</span>
+                            <span class="price-value" id="price-BTCUSD">$0.00</span>
+                        </div>
+                        <div class="price-item">
+                            <span class="price-ticker">ETH</span>
+                            <span class="price-value" id="price-ETHUSD">$0.00</span>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Right: Trade History -->
+            <aside class="history-panel">
+                <div class="card history-card">
+                    <h3 class="card-title">
+                        <span class="icon">📜</span>
+                        Trade History
+                    </h3>
+                    <div class="history-list" id="history-list">
+                        <div class="no-history">No trades yet</div>
+                    </div>
+                </div>
+            </aside>
+        </main>
+
+        <!-- Live Logs -->
+        <section class="logs-panel">
+            <div class="logs-header">
+                <span class="logs-title">📋 Live Logs</span>
+                <button class="btn-clear" id="btn-clear-logs">Clear</button>
+            </div>
+            <div class="logs-container" id="logs-container">
+                <div class="log-entry log-info">Waiting for logs...</div>
+            </div>
+        </section>
+
+        <!-- Footer -->
+        <footer class="footer">
+            <div class="footer-info">
+                <span>Ethereal Points Farmer v1.0</span>
+                <span class="separator">|</span>
+                <span id="last-update">Last update: -</span>
+            </div>
+        </footer>
+    </div>
+
+    <!-- Settings Modal -->
+    <div class="modal-overlay" id="settings-modal" style="display: none;">
+        <div class="modal modal-large">
+            <h3 class="modal-title">⚙ Edit Settings</h3>
+            <div class="modal-body">
+                <div class="settings-section">
+                    <h4 class="section-title">Trading Pairs</h4>
+                    <div class="pairs-grid" id="pairs-checkboxes">
+                        <!-- Populated by JS -->
+                    </div>
+                </div>
+                
+                <div class="settings-section">
+                    <h4 class="section-title">Position Sizing</h4>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label class="form-label">
+                                <input type="checkbox" id="input-use-full-balance" checked>
+                                Use Full Balance
+                            </label>
+                            <span class="form-hint">Trade with smaller account's full balance</span>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Fixed Position Size ($)</label>
+                            <input type="number" class="form-input" id="input-position" min="1" step="1" placeholder="Only if not using full balance">
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label class="form-label">Leverage</label>
+                            <input type="number" class="form-input" id="input-leverage" min="1" max="20" step="1">
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Min Balance to Trade ($)</label>
+                            <input type="number" class="form-input" id="input-min-balance" min="1" step="1" placeholder="Stop when below this">
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="settings-section">
+                    <h4 class="section-title">Risk Management</h4>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label class="form-label">Stop Loss (%)</label>
+                            <input type="number" class="form-input" id="input-sl" min="0.1" max="100" step="0.1">
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Take Profit (%)</label>
+                            <input type="number" class="form-input" id="input-tp" min="0.1" max="100" step="0.1">
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="settings-section">
+                    <h4 class="section-title">Timing</h4>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label class="form-label">Min Hold (minutes)</label>
+                            <input type="number" class="form-input" id="input-min-hold" min="1" step="1">
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Max Hold (minutes)</label>
+                            <input type="number" class="form-input" id="input-max-hold" min="1" step="1">
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label class="form-label">Min Delay (seconds)</label>
+                            <input type="number" class="form-input" id="input-min-delay" min="10" step="1">
+                            <span class="form-hint">Delay before opening next trade</span>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Max Delay (seconds)</label>
+                            <input type="number" class="form-input" id="input-max-delay" min="10" step="1">
+                            <span class="form-hint">Random between min-max</span>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="settings-section">
+                    <h4 class="section-title">Daily Limits</h4>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label class="form-label">Max Daily Trades</label>
+                            <input type="number" class="form-input" id="input-max-trades" min="1" step="1">
+                            <span class="form-hint">Resets at midnight</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-actions">
+                <button class="btn btn-danger" id="btn-cancel-settings">CANCEL</button>
+                <button class="btn btn-success" id="btn-save-settings">SAVE SETTINGS</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="/static/js/app.js"></script>
+</body>
+</html>

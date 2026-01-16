@@ -1,0 +1,13 @@
+﻿ethereal-sdk
+python-dotenv
+pydantic
+pydantic-settings
+rich
+click
+eth-account
+web3
+fastapi
+uvicorn
+aiosqlite
+python-multipart
+httpx

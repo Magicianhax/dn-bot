@@ -1,0 +1,20 @@
+[project]
+name = "ethereal-dn-trader"
+version = "0.1.0"
+description = "Delta-neutral trading tool for Ethereal DEX"
+requires-python = ">=3.10"
+dependencies = [
+    "ethereal-sdk",
+    "python-dotenv",
+    "pydantic",
+    "pydantic-settings",
+    "rich",
+    "click",
+]
+
+[project.scripts]
+ethereal-trader = "main:cli"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"

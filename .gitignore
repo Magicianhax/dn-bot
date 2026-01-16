@@ -1,0 +1,32 @@
+# Environment
+.env
+venv/
+__pycache__/
+*.pyc
+*.pyo
+.claude/
+
+# Test files
+test_*.py
+tests/
+
+# Other MD files (only keep README.md and DEPLOY.md)
+PLAN.md
+resume.md
+command.md
+
+# Database (optional - remove if you want to track it)
+data/*.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
