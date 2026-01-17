@@ -45,7 +45,15 @@ class Settings(BaseSettings):
     )
     leverage: int = Field(
         default=10,
-        description="Trading leverage"
+        description="Default trading leverage (used if no market-specific limit)"
+    )
+    max_concurrent_trades: int = Field(
+        default=2,
+        description="Number of trades to open simultaneously (each uses different pair)"
+    )
+    market_max_leverage: str = Field(
+        default="BTCUSD:20,ETHUSD:20",
+        description="Market-specific max leverage limits (format: PAIR:LEV,PAIR:LEV). Markets not listed default to 10x."
     )
     position_size: float = Field(
         default=0.0,
@@ -128,6 +136,14 @@ class Settings(BaseSettings):
             raise ValueError("Leverage must be between 1 and 20")
         return v
 
+    @field_validator("max_concurrent_trades")
+    @classmethod
+    def validate_max_concurrent_trades(cls, v: int) -> int:
+        """Validate max concurrent trades."""
+        if v < 1 or v > 10:
+            raise ValueError("Max concurrent trades must be between 1 and 10")
+        return v
+
     @field_validator("stop_loss_percent", "take_profit_percent")
     @classmethod
     def validate_percent(cls, v: float) -> float:
@@ -140,6 +156,37 @@ class Settings(BaseSettings):
     def trading_pairs_list(self) -> List[str]:
         """Get trading pairs as a list."""
         return [p.strip().upper() for p in self.trading_pairs.split(",") if p.strip()]
+
+    @property
+    def market_leverage_limits(self) -> dict[str, int]:
+        """Parse market_max_leverage string into a dict.
+
+        Format: "BTCUSD:20,ETHUSD:20,SOLUSD:10"
+        Returns: {"BTCUSD": 20, "ETHUSD": 20, "SOLUSD": 10}
+        """
+        limits = {}
+        if not self.market_max_leverage:
+            return limits
+        for item in self.market_max_leverage.split(","):
+            item = item.strip()
+            if ":" in item:
+                pair, lev = item.split(":", 1)
+                try:
+                    limits[pair.strip().upper()] = int(lev.strip())
+                except ValueError:
+                    pass
+        return limits
+
+    def get_leverage_for_market(self, market: str) -> int:
+        """Get effective leverage for a specific market.
+
+        Returns market-specific limit if defined, otherwise default leverage.
+        Ensures requested leverage doesn't exceed market max.
+        """
+        market = market.upper()
+        limits = self.market_leverage_limits
+        max_lev = limits.get(market, 10)  # Default max is 10x for unlisted markets
+        return min(self.leverage, max_lev)
 
     @property
     def has_dual_accounts(self) -> bool:
@@ -167,12 +214,14 @@ class Settings(BaseSettings):
             "base_url": self.ethereal_api_url,
         }
 
-    class Config:
-        env_file = ".env"
-        env_file_encoding = "utf-8"
-        case_sensitive = False
-        extra = "ignore"  # Ignore extra fields for backward compatibility
-        populate_by_name = True  # Allow both alias and field name
+    model_config = {
+        "env_file": ".env",
+        "env_file_encoding": "utf-8",
+        "case_sensitive": False,
+        "extra": "ignore",  # Ignore extra fields for backward compatibility
+        "populate_by_name": True,  # Allow both alias and field name
+        "validate_assignment": True,  # Allow attribute assignment after creation
+    }
 
 
 # Global settings instance
