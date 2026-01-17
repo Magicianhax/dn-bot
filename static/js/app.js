@@ -34,7 +34,7 @@ class Dashboard {
             // Settings Display
             settingPairs: document.getElementById('setting-pairs'),
             settingPosition: document.getElementById('setting-position'),
-            settingLeverage: document.getElementById('setting-leverage'),
+            settingPairsCount: document.getElementById('setting-pairs-count'),
             settingConcurrent: document.getElementById('setting-concurrent'),
             settingSltp: document.getElementById('setting-sltp'),
             settingHold: document.getElementById('setting-hold'),
@@ -46,7 +46,6 @@ class Dashboard {
             inputUseFullBalance: document.getElementById('input-use-full-balance'),
             inputPosition: document.getElementById('input-position'),
             inputMinBalance: document.getElementById('input-min-balance'),
-            inputLeverage: document.getElementById('input-leverage'),
             inputConcurrentTrades: document.getElementById('input-concurrent-trades'),
             inputSl: document.getElementById('input-sl'),
             inputTp: document.getElementById('input-tp'),
@@ -615,7 +614,6 @@ class Dashboard {
         this.elements.inputPosition.value = s.position_size || 50;
         this.elements.inputPosition.disabled = this.elements.inputUseFullBalance.checked;
         this.elements.inputMinBalance.value = s.min_balance_threshold || 10;
-        this.elements.inputLeverage.value = s.leverage || 10;
         this.elements.inputConcurrentTrades.value = s.max_concurrent_trades || 2;
         this.elements.inputSl.value = s.stop_loss_percent || 5;
         this.elements.inputTp.value = s.take_profit_percent || 5;
@@ -742,7 +740,6 @@ class Dashboard {
             use_full_balance: this.elements.inputUseFullBalance.checked,
             position_size: parseFloat(this.elements.inputPosition.value) || 50,
             min_balance_threshold: parseFloat(this.elements.inputMinBalance.value) || 10,
-            leverage: parseInt(this.elements.inputLeverage.value) || 10,
             max_concurrent_trades: parseInt(this.elements.inputConcurrentTrades.value) || 2,
             market_max_leverage: marketMaxLeverage,
             stop_loss_percent: parseFloat(this.elements.inputSl.value) || 5,
@@ -786,7 +783,8 @@ class Dashboard {
             this.elements.settingPosition.textContent = this.formatMoney(settings.position_size || 0);
         }
 
-        this.elements.settingLeverage.textContent = `${settings.leverage || 0}x`;
+        const pairsList = (settings.trading_pairs || '').split(',').filter(p => p.trim());
+        this.elements.settingPairsCount.textContent = pairsList.length;
         this.elements.settingConcurrent.textContent = settings.max_concurrent_trades || 2;
         this.elements.settingSltp.textContent = `${settings.stop_loss_percent || 0}% / ${settings.take_profit_percent || 0}%`;
         this.elements.settingHold.textContent = `${settings.min_hold_time_minutes || 0}-${settings.max_hold_time_minutes || 0}m`;

@@ -1128,19 +1128,13 @@ class PointsFarmingStrategy:
             logger.error(f"Could not get price for {product_id}")
             return
 
-        # Get effective leverage for this market
-        # 1. Get API max leverage for the market
+        # Get leverage for this market from user's per-pair settings
         api_max_lev = long_account.get_max_leverage(product_id)
-        # 2. Get user's custom leverage setting for this specific market (from settings modal)
-        user_lev_for_market = self.settings.market_leverage_limits.get(product_id.upper(), 0)
-        # 3. If user set a custom leverage for this pair, use it (capped at API max)
-        #    Otherwise fall back to the global target leverage setting
-        if user_lev_for_market > 0:
-            effective_leverage = min(user_lev_for_market, api_max_lev)
-        else:
-            effective_leverage = min(self.settings.leverage, api_max_lev)
+        user_lev_for_market = self.settings.market_leverage_limits.get(product_id.upper(), api_max_lev)
+        # Use exact leverage user set (capped at API max for safety)
+        effective_leverage = min(user_lev_for_market, api_max_lev)
 
-        logger.info(f"Leverage for {product_id}: {effective_leverage}x (user setting: {user_lev_for_market}x, market max: {api_max_lev}x)")
+        logger.info(f"Leverage for {product_id}: {effective_leverage}x (user set: {user_lev_for_market}x, market max: {api_max_lev}x)")
 
         # Calculate position size with consideration for multiple concurrent trades
         max_concurrent = getattr(self.settings, 'max_concurrent_trades', 2)
