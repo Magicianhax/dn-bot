@@ -12,7 +12,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse, FileResponse
 from pydantic import BaseModel
 
-from ..config import Settings, get_settings
+from ..config import Settings, get_settings, save_settings
 from ..database import get_database
 from ..trading.points_strategy import PointsFarmingStrategy, TradePair, TradeStatus
 from ..utils.logger import get_logger
@@ -410,11 +410,14 @@ def register_routes(app: FastAPI):
             if _strategy:
                 _strategy.settings = settings
             
+            # Save settings to file for persistence across restarts
+            save_settings(settings)
+            
             logger.info(f"Settings updated via API")
             await broadcast({"type": "settings_updated"})
-            add_log("INFO", "Settings updated")
+            add_log("INFO", "Settings updated and saved")
             
-            return {"success": True, "message": "Settings updated"}
+            return {"success": True, "message": "Settings updated and saved"}
         except Exception as e:
             logger.error(f"Failed to update settings: {e}")
             return {"success": False, "message": str(e)}

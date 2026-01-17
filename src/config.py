@@ -1,8 +1,13 @@
 """Configuration management for Ethereal Points Farming Tool."""
 
+import json
+from pathlib import Path
 from typing import Optional, List
 from pydantic_settings import BaseSettings
 from pydantic import Field, field_validator
+
+# Path to persist runtime settings
+SETTINGS_FILE = Path(__file__).parent.parent / "data" / "settings.json"
 
 
 class Settings(BaseSettings):
@@ -233,6 +238,8 @@ def get_settings() -> Settings:
     global _settings
     if _settings is None:
         _settings = Settings()
+        # Load saved runtime settings on top of env defaults
+        _load_saved_settings(_settings)
     return _settings
 
 
@@ -240,4 +247,82 @@ def reload_settings() -> Settings:
     """Force reload settings from environment."""
     global _settings
     _settings = Settings()
+    _load_saved_settings(_settings)
     return _settings
+
+
+def save_settings(settings: Settings) -> bool:
+    """Save current settings to JSON file for persistence."""
+    try:
+        # Ensure data directory exists
+        SETTINGS_FILE.parent.mkdir(parents=True, exist_ok=True)
+        
+        # Save only the runtime-configurable settings
+        data = {
+            "trading_pairs": settings.trading_pairs,
+            "leverage": settings.leverage,
+            "max_concurrent_trades": settings.max_concurrent_trades,
+            "market_max_leverage": settings.market_max_leverage,
+            "position_size": settings.position_size,
+            "use_full_balance": settings.use_full_balance,
+            "min_balance_threshold": settings.min_balance_threshold,
+            "stop_loss_percent": settings.stop_loss_percent,
+            "take_profit_percent": settings.take_profit_percent,
+            "min_hold_time_minutes": settings.min_hold_time_minutes,
+            "max_hold_time_minutes": settings.max_hold_time_minutes,
+            "min_trade_delay_seconds": settings.min_trade_delay_seconds,
+            "max_trade_delay_seconds": settings.max_trade_delay_seconds,
+            "max_daily_trades": settings.max_daily_trades,
+        }
+        
+        with open(SETTINGS_FILE, "w") as f:
+            json.dump(data, f, indent=2)
+        
+        return True
+    except Exception as e:
+        print(f"Failed to save settings: {e}")
+        return False
+
+
+def _load_saved_settings(settings: Settings) -> None:
+    """Load saved settings from JSON file and apply to settings object."""
+    if not SETTINGS_FILE.exists():
+        return
+    
+    try:
+        with open(SETTINGS_FILE, "r") as f:
+            data = json.load(f)
+        
+        # Apply saved values
+        if "trading_pairs" in data:
+            settings.trading_pairs = data["trading_pairs"]
+        if "leverage" in data:
+            settings.leverage = data["leverage"]
+        if "max_concurrent_trades" in data:
+            settings.max_concurrent_trades = data["max_concurrent_trades"]
+        if "market_max_leverage" in data:
+            settings.market_max_leverage = data["market_max_leverage"]
+        if "position_size" in data:
+            settings.position_size = data["position_size"]
+        if "use_full_balance" in data:
+            settings.use_full_balance = data["use_full_balance"]
+        if "min_balance_threshold" in data:
+            settings.min_balance_threshold = data["min_balance_threshold"]
+        if "stop_loss_percent" in data:
+            settings.stop_loss_percent = data["stop_loss_percent"]
+        if "take_profit_percent" in data:
+            settings.take_profit_percent = data["take_profit_percent"]
+        if "min_hold_time_minutes" in data:
+            settings.min_hold_time_minutes = data["min_hold_time_minutes"]
+        if "max_hold_time_minutes" in data:
+            settings.max_hold_time_minutes = data["max_hold_time_minutes"]
+        if "min_trade_delay_seconds" in data:
+            settings.min_trade_delay_seconds = data["min_trade_delay_seconds"]
+        if "max_trade_delay_seconds" in data:
+            settings.max_trade_delay_seconds = data["max_trade_delay_seconds"]
+        if "max_daily_trades" in data:
+            settings.max_daily_trades = data["max_daily_trades"]
+        
+        print(f"Loaded saved settings from {SETTINGS_FILE}")
+    except Exception as e:
+        print(f"Failed to load saved settings: {e}")
