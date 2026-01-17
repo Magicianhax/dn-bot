@@ -15,7 +15,8 @@ class Dashboard {
             wsStatus: document.getElementById('ws-status'),
             
             // Buttons
-            btnStart: document.getElementById('btn-start'),
+            btnConnect: document.getElementById('btn-connect'),
+            btnStartTrading: document.getElementById('btn-start-trading'),
             btnStop: document.getElementById('btn-stop'),
             btnCloseAll: document.getElementById('btn-close-all'),
             btnEditSettings: document.getElementById('btn-edit-settings'),
@@ -165,7 +166,8 @@ class Dashboard {
     }
     
     setupEventListeners() {
-        this.elements.btnStart.addEventListener('click', () => this.startBot());
+        this.elements.btnConnect.addEventListener('click', () => this.connectBot());
+        this.elements.btnStartTrading.addEventListener('click', () => this.startTrading());
         this.elements.btnStop.addEventListener('click', () => this.stopBot());
         this.elements.btnCloseAll.addEventListener('click', () => this.closeAll());
         
@@ -212,8 +214,14 @@ class Dashboard {
             const response = await fetch('/api/status');
             const data = await response.json();
             
-            // Bot status
-            this.updateBotStatus(data.bot_running);
+            // Bot status: can be 'offline', 'connected', or 'trading'
+            if (data.bot_trading) {
+                this.updateBotStatus('trading');
+            } else if (data.bot_connected) {
+                this.updateBotStatus('connected');
+            } else {
+                this.updateBotStatus('offline');
+            }
             
             // Account balances
             if (data.accounts) {
@@ -441,38 +449,79 @@ class Dashboard {
         }
     }
     
-    updateBotStatus(running) {
-        if (running) {
-            this.elements.botStatus.classList.add('running');
-            this.elements.botStatus.querySelector('.status-text').textContent = 'RUNNING';
-            this.elements.btnStart.disabled = true;
+    updateBotStatus(status) {
+        // status can be: 'offline', 'connected', 'trading'
+        const statusEl = this.elements.botStatus;
+        const statusText = statusEl.querySelector('.status-text');
+        
+        statusEl.classList.remove('running', 'connected');
+        
+        if (status === 'trading') {
+            statusEl.classList.add('running');
+            statusText.textContent = 'TRADING';
+            this.elements.btnConnect.disabled = true;
+            this.elements.btnStartTrading.disabled = true;
+            this.elements.btnStop.disabled = false;
+        } else if (status === 'connected') {
+            statusEl.classList.add('connected');
+            statusText.textContent = 'CONNECTED';
+            this.elements.btnConnect.disabled = true;
+            this.elements.btnStartTrading.disabled = false;
             this.elements.btnStop.disabled = false;
         } else {
-            this.elements.botStatus.classList.remove('running');
-            this.elements.botStatus.querySelector('.status-text').textContent = 'OFFLINE';
-            this.elements.btnStart.disabled = false;
+            statusText.textContent = 'OFFLINE';
+            this.elements.btnConnect.disabled = false;
+            this.elements.btnStartTrading.disabled = true;
             this.elements.btnStop.disabled = true;
         }
     }
     
-    async startBot() {
+    async connectBot() {
         try {
-            this.elements.btnStart.disabled = true;
-            this.elements.btnStart.textContent = 'Starting...';
+            this.elements.btnConnect.disabled = true;
+            this.elements.btnConnect.textContent = 'Connecting...';
             
-            const response = await fetch('/api/bot/start', { method: 'POST' });
+            const response = await fetch('/api/bot/connect', { method: 'POST' });
             const data = await response.json();
             
             if (data.success) {
-                this.updateBotStatus(true);
+                this.updateBotStatus('connected');
+                await this.fetchAll();
+                this.addLog({ level: 'INFO', message: 'Bot connected - ready to configure and start trading' });
             } else {
-                alert('Failed to start bot: ' + data.message);
+                alert('Failed to connect: ' + data.message);
+                this.elements.btnConnect.disabled = false;
             }
         } catch (error) {
-            console.error('Failed to start bot:', error);
-            alert('Failed to start bot');
+            console.error('Failed to connect bot:', error);
+            alert('Failed to connect bot');
+            this.elements.btnConnect.disabled = false;
         } finally {
-            this.elements.btnStart.innerHTML = '<span>▶</span> START';
+            this.elements.btnConnect.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14"/><path d="M12 5l7 7-7 7"/></svg> CONNECT';
+        }
+    }
+    
+    async startTrading() {
+        try {
+            this.elements.btnStartTrading.disabled = true;
+            this.elements.btnStartTrading.textContent = 'Starting...';
+            
+            const response = await fetch('/api/bot/start-trading', { method: 'POST' });
+            const data = await response.json();
+            
+            if (data.success) {
+                this.updateBotStatus('trading');
+                this.addLog({ level: 'INFO', message: 'Trading started!' });
+            } else {
+                alert('Failed to start trading: ' + data.message);
+                this.elements.btnStartTrading.disabled = false;
+            }
+        } catch (error) {
+            console.error('Failed to start trading:', error);
+            alert('Failed to start trading');
+            this.elements.btnStartTrading.disabled = false;
+        } finally {
+            this.elements.btnStartTrading.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg> START TRADING';
         }
     }
     
@@ -485,7 +534,7 @@ class Dashboard {
             const data = await response.json();
             
             if (data.success) {
-                this.updateBotStatus(false);
+                this.updateBotStatus('offline');
             } else {
                 alert('Failed to stop bot: ' + data.message);
             }
@@ -493,7 +542,7 @@ class Dashboard {
             console.error('Failed to stop bot:', error);
             alert('Failed to stop bot');
         } finally {
-            this.elements.btnStop.innerHTML = '<span>■</span> STOP';
+            this.elements.btnStop.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><rect x="4" y="4" width="16" height="16" rx="2"/></svg> STOP';
         }
     }
     

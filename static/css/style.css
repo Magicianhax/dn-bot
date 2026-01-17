@@ -158,6 +158,15 @@ body {
     color: var(--success);
 }
 
+.status-indicator.connected .status-dot {
+    background: var(--accent-secondary);
+    box-shadow: 0 0 8px var(--accent-secondary);
+}
+
+.status-indicator.connected .status-text {
+    color: var(--accent-secondary);
+}
+
 .ws-indicator {
     display: flex;
     align-items: center;
@@ -314,6 +323,18 @@ body {
     background: var(--warning);
     color: #000;
     box-shadow: 0 0 20px rgba(245, 158, 11, 0.3);
+}
+
+.btn-primary {
+    background: rgba(59, 130, 246, 0.1);
+    border-color: var(--accent-secondary);
+    color: var(--accent-secondary);
+}
+
+.btn-primary:hover:not(:disabled) {
+    background: var(--accent-secondary);
+    color: #fff;
+    box-shadow: 0 0 20px rgba(59, 130, 246, 0.3);
 }
 
 /* Settings Card */

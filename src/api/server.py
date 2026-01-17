@@ -130,10 +130,13 @@ def register_routes(app: FastAPI):
         stats = await db.get_total_stats()
         volume = await db.get_volume_summary()
         
-        bot_running = _strategy is not None and _strategy.running
+        bot_connected = _strategy is not None and _strategy.account1 is not None and _strategy.account1.is_connected
+        bot_trading = _strategy is not None and _strategy.running
         
         status = {
-            "bot_running": bot_running,
+            "bot_running": bot_trading,  # Legacy compatibility
+            "bot_connected": bot_connected,
+            "bot_trading": bot_trading,
             "settings": {
                 "trading_pairs": settings.trading_pairs,
                 "position_size": settings.position_size,
@@ -174,9 +177,60 @@ def register_routes(app: FastAPI):
         
         return status
     
+    @app.post("/api/bot/connect")
+    async def connect_bot():
+        """Connect to accounts without starting trading."""
+        global _strategy
+        
+        if _strategy and _strategy.account1 and _strategy.account1.is_connected:
+            return {"success": True, "message": "Already connected"}
+        
+        try:
+            settings = get_settings()
+            _strategy = PointsFarmingStrategy(settings)
+            
+            # Initialize (connects to accounts)
+            if not await _strategy.initialize():
+                return {"success": False, "message": "Failed to initialize strategy"}
+            
+            # Set up trade callbacks
+            _strategy.on_trade_open(on_trade_open)
+            _strategy.on_trade_close(on_trade_close)
+            
+            logger.info("Bot connected via API (not trading yet)")
+            await broadcast({"type": "bot_status", "connected": True, "trading": False})
+            
+            return {"success": True, "message": "Bot connected"}
+        except Exception as e:
+            logger.error(f"Failed to connect bot: {e}")
+            return {"success": False, "message": str(e)}
+
+    @app.post("/api/bot/start-trading")
+    async def start_trading():
+        """Start trading (bot must be connected first)."""
+        global _strategy, _strategy_task
+        
+        if not _strategy or not _strategy.account1 or not _strategy.account1.is_connected:
+            return {"success": False, "message": "Bot not connected. Click Connect first."}
+        
+        if _strategy.running:
+            return {"success": False, "message": "Already trading"}
+        
+        try:
+            # Start trading in background
+            _strategy_task = asyncio.create_task(_strategy.start())
+            
+            logger.info("Trading started via API")
+            await broadcast({"type": "bot_status", "connected": True, "trading": True})
+            
+            return {"success": True, "message": "Trading started"}
+        except Exception as e:
+            logger.error(f"Failed to start trading: {e}")
+            return {"success": False, "message": str(e)}
+
     @app.post("/api/bot/start")
     async def start_bot():
-        """Start the trading bot."""
+        """Start the trading bot (legacy - connects and starts trading)."""
         global _strategy, _strategy_task
         
         if _strategy and _strategy.running:
@@ -198,7 +252,7 @@ def register_routes(app: FastAPI):
             _strategy_task = asyncio.create_task(_strategy.start())
             
             logger.info("Bot started via API")
-            await broadcast({"type": "bot_status", "running": True})
+            await broadcast({"type": "bot_status", "connected": True, "trading": True})
             
             return {"success": True, "message": "Bot started"}
         except Exception as e:
@@ -207,19 +261,26 @@ def register_routes(app: FastAPI):
     
     @app.post("/api/bot/stop")
     async def stop_bot():
-        """Stop the trading bot."""
+        """Stop the trading bot and disconnect."""
         global _strategy, _strategy_task
         
-        if not _strategy or not _strategy.running:
+        if not _strategy:
             return {"success": False, "message": "Bot is not running"}
         
         try:
-            await _strategy.stop()
+            # Stop trading if running
+            if _strategy.running:
+                await _strategy.stop()
             if _strategy_task:
                 _strategy_task.cancel()
+                _strategy_task = None
             
-            logger.info("Bot stopped via API")
-            await broadcast({"type": "bot_status", "running": False})
+            # Disconnect accounts
+            await _strategy.shutdown()
+            _strategy = None
+            
+            logger.info("Bot stopped and disconnected via API")
+            await broadcast({"type": "bot_status", "connected": False, "trading": False})
             
             return {"success": True, "message": "Bot stopped"}
         except Exception as e:
