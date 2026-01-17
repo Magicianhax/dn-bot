@@ -363,36 +363,56 @@ def register_routes(app: FastAPI):
     
     @app.get("/api/positions")
     async def get_positions():
-        """Get current positions for both accounts."""
+        """Get current positions for both accounts with detailed info."""
         global _strategy
-        
-        positions = {"account1": [], "account2": []}
-        
+        settings = get_settings()
+
+        positions = {
+            "account1": [],
+            "account2": [],
+            "account1_address": "",
+            "account2_address": "",
+            "leverage": settings.leverage,
+        }
+
         if _strategy and _strategy.account1 and _strategy.account2:
             try:
+                # Get wallet addresses (shortened)
+                addr1 = _strategy.account1.wallet_address
+                addr2 = _strategy.account2.wallet_address
+                positions["account1_address"] = f"{addr1[:6]}...{addr1[-4:]}" if addr1 else ""
+                positions["account2_address"] = f"{addr2[:6]}...{addr2[-4:]}" if addr2 else ""
+
                 pos1 = await _strategy.account1.list_positions()
                 pos2 = await _strategy.account2.list_positions()
-                
+
+                # Positions already have all calculated fields
                 for p in pos1:
                     positions["account1"].append({
                         "ticker": p.get("ticker", ""),
                         "size": float(p.get("size", 0)),
                         "entry_price": float(p.get("entry_price", 0)),
+                        "mark_price": float(p.get("mark_price", 0)),
                         "unrealized_pnl": float(p.get("unrealized_pnl", 0)),
-                        "side": "LONG" if float(p.get("size", 0)) > 0 else "SHORT",
+                        "side": p.get("side", "LONG"),
+                        "notional": float(p.get("notional", 0)),
+                        "leverage": settings.leverage,
                     })
-                
+
                 for p in pos2:
                     positions["account2"].append({
                         "ticker": p.get("ticker", ""),
                         "size": float(p.get("size", 0)),
                         "entry_price": float(p.get("entry_price", 0)),
+                        "mark_price": float(p.get("mark_price", 0)),
                         "unrealized_pnl": float(p.get("unrealized_pnl", 0)),
-                        "side": "LONG" if float(p.get("size", 0)) > 0 else "SHORT",
+                        "side": p.get("side", "LONG"),
+                        "notional": float(p.get("notional", 0)),
+                        "leverage": settings.leverage,
                     })
             except Exception as e:
                 logger.error(f"Failed to get positions: {e}")
-        
+
         return positions
     
     # ============ Volume Stats ============

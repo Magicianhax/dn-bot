@@ -27,6 +27,8 @@ class Dashboard {
             acc2Balance: document.getElementById('acc2-balance'),
             acc1Positions: document.getElementById('acc1-positions'),
             acc2Positions: document.getElementById('acc2-positions'),
+            acc1Address: document.getElementById('acc1-address'),
+            acc2Address: document.getElementById('acc2-address'),
             
             // Settings Display
             settingPairs: document.getElementById('setting-pairs'),
@@ -266,29 +268,29 @@ class Dashboard {
         const acc2Side = trade.account1_is_long ? 'SHORT' : 'LONG';
         
         this.elements.activeTrade.innerHTML = `
-            <div class="active-trade">
-                <div class="trade-header">
+            <div class="active-trade-compact">
+                <div class="trade-info-row">
                     <span class="trade-ticker">${trade.product_id}</span>
-                    <div class="trade-direction">
-                        <span class="trade-side-badge ${acc1Side.toLowerCase()}">Acc1: ${acc1Side}</span>
-                        <span class="trade-side-badge ${acc2Side.toLowerCase()}">Acc2: ${acc2Side}</span>
+                    <span class="trade-side-badge ${acc1Side.toLowerCase()}">${acc1Side}</span>
+                    <span class="trade-side-badge ${acc2Side.toLowerCase()}">${acc2Side}</span>
+                </div>
+                <div class="trade-stats-row">
+                    <div class="trade-stat-inline">
+                        <span class="stat-label">Entry</span>
+                        <span class="stat-value">${this.formatMoney(trade.entry_price)}</span>
                     </div>
-                </div>
-                <div class="trade-stat">
-                    <div class="trade-stat-label">Entry Price</div>
-                    <div class="trade-stat-value">${this.formatMoney(trade.entry_price)}</div>
-                </div>
-                <div class="trade-stat">
-                    <div class="trade-stat-label">Size</div>
-                    <div class="trade-stat-value">${trade.size}</div>
-                </div>
-                <div class="trade-stat">
-                    <div class="trade-stat-label">Total PnL</div>
-                    <div class="trade-stat-value ${pnlClass}">${this.formatMoney(pnl)}</div>
-                </div>
-                <div class="trade-stat">
-                    <div class="trade-stat-label">Hold Time</div>
-                    <div class="trade-stat-value">${trade.hold_time_minutes?.toFixed(1) || 0}m / ${trade.target_hold_minutes?.toFixed(1) || 0}m</div>
+                    <div class="trade-stat-inline">
+                        <span class="stat-label">Size</span>
+                        <span class="stat-value">${trade.size}</span>
+                    </div>
+                    <div class="trade-stat-inline">
+                        <span class="stat-label">PnL</span>
+                        <span class="stat-value ${pnlClass}">${this.formatMoney(pnl)}</span>
+                    </div>
+                    <div class="trade-stat-inline">
+                        <span class="stat-label">Hold</span>
+                        <span class="stat-value">${trade.hold_time_minutes?.toFixed(1) || 0}m / ${trade.target_hold_minutes?.toFixed(1) || 0}m</span>
+                    </div>
                 </div>
             </div>
         `;
@@ -298,30 +300,70 @@ class Dashboard {
         try {
             const response = await fetch('/api/positions');
             const data = await response.json();
-            
+
+            // Update wallet addresses
+            if (this.elements.acc1Address) {
+                this.elements.acc1Address.textContent = data.account1_address || '';
+            }
+            if (this.elements.acc2Address) {
+                this.elements.acc2Address.textContent = data.account2_address || '';
+            }
+
             this.renderPositions(data.account1, this.elements.acc1Positions);
             this.renderPositions(data.account2, this.elements.acc2Positions);
         } catch (error) {
             console.error('Failed to fetch positions:', error);
         }
     }
-    
+
     renderPositions(positions, element) {
         if (!positions || positions.length === 0) {
             element.innerHTML = '<div class="no-positions">No positions</div>';
             return;
         }
-        
+
         element.innerHTML = positions.map(p => {
             const pnl = p.unrealized_pnl || 0;
             const pnlClass = pnl >= 0 ? 'positive' : 'negative';
             const sideClass = p.side === 'LONG' ? 'long' : 'short';
-            
+            const size = Math.abs(p.size || 0);
+            const leverage = p.leverage || 1;
+            const notional = p.notional || 0;
+            const entryPrice = p.entry_price || 0;
+            const markPrice = p.mark_price || entryPrice;
+
             return `
-                <div class="position-item">
-                    <span class="position-ticker">${p.ticker}</span>
-                    <span class="position-side ${sideClass}">${p.side}</span>
-                    <span class="position-pnl ${pnlClass}">${this.formatMoney(pnl)}</span>
+                <div class="position-item-detailed">
+                    <div class="position-header">
+                        <span class="position-ticker">${p.ticker}</span>
+                        <span class="position-side ${sideClass}">${p.side}</span>
+                    </div>
+                    <div class="position-details">
+                        <div class="position-detail">
+                            <span class="detail-label">Size</span>
+                            <span class="detail-value">${size.toFixed(6)}</span>
+                        </div>
+                        <div class="position-detail">
+                            <span class="detail-label">Leverage</span>
+                            <span class="detail-value">${leverage}x</span>
+                        </div>
+                        <div class="position-detail">
+                            <span class="detail-label">Notional</span>
+                            <span class="detail-value">${this.formatMoney(notional)}</span>
+                        </div>
+                        <div class="position-detail">
+                            <span class="detail-label">Entry</span>
+                            <span class="detail-value">${this.formatMoney(entryPrice)}</span>
+                        </div>
+                        <div class="position-detail">
+                            <span class="detail-label">Mark</span>
+                            <span class="detail-value">${this.formatMoney(markPrice)}</span>
+                        </div>
+                        <div class="position-detail">
+                            <span class="detail-label">PnL</span>
+                            <span class="detail-value ${pnlClass}">${this.formatMoney(pnl)}</span>
+                        </div>
+                    </div>
                 </div>
             `;
         }).join('');
