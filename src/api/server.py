@@ -482,27 +482,37 @@ def register_routes(app: FastAPI):
 
                 # Positions already have all calculated fields
                 for p in pos1:
+                    ticker = p.get("ticker", "")
+                    # Get per-pair leverage from settings, fallback to market max
+                    pair_lev = settings.market_leverage_limits.get(ticker.upper(), 0)
+                    if pair_lev == 0:
+                        pair_lev = _strategy.account1.get_max_leverage(ticker) if _strategy.account1 else 10
                     positions["account1"].append({
-                        "ticker": p.get("ticker", ""),
+                        "ticker": ticker,
                         "size": float(p.get("size", 0)),
                         "entry_price": float(p.get("entry_price", 0)),
                         "mark_price": float(p.get("mark_price", 0)),
                         "unrealized_pnl": float(p.get("unrealized_pnl", 0)),
                         "side": p.get("side", "LONG"),
                         "notional": float(p.get("notional", 0)),
-                        "leverage": settings.leverage,
+                        "leverage": pair_lev,
                     })
 
                 for p in pos2:
+                    ticker = p.get("ticker", "")
+                    # Get per-pair leverage from settings, fallback to market max
+                    pair_lev = settings.market_leverage_limits.get(ticker.upper(), 0)
+                    if pair_lev == 0:
+                        pair_lev = _strategy.account2.get_max_leverage(ticker) if _strategy.account2 else 10
                     positions["account2"].append({
-                        "ticker": p.get("ticker", ""),
+                        "ticker": ticker,
                         "size": float(p.get("size", 0)),
                         "entry_price": float(p.get("entry_price", 0)),
                         "mark_price": float(p.get("mark_price", 0)),
                         "unrealized_pnl": float(p.get("unrealized_pnl", 0)),
                         "side": p.get("side", "LONG"),
                         "notional": float(p.get("notional", 0)),
-                        "leverage": settings.leverage,
+                        "leverage": pair_lev,
                     })
             except Exception as e:
                 logger.error(f"Failed to get positions: {e}")

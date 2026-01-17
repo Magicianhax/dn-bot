@@ -958,7 +958,84 @@ class PointsFarmingStrategy:
         if bal1 == 0 or bal2 == 0:
             logger.warning("One or both accounts have zero balance!")
 
+        # Resume existing positions
+        await self._resume_existing_trades()
+
         return True
+
+    async def _resume_existing_trades(self) -> None:
+        """Detect and resume existing positions from both accounts."""
+        if not self.account1 or not self.account2:
+            return
+
+        logger.info("Checking for existing positions to resume...")
+
+        # Get positions from both accounts
+        pos1 = await self.account1.list_positions()
+        pos2 = await self.account2.list_positions()
+
+        if not pos1 and not pos2:
+            logger.info("No existing positions found")
+            return
+
+        # Build a map of positions by ticker for each account
+        acc1_positions = {p.get("ticker"): p for p in pos1 if p.get("ticker")}
+        acc2_positions = {p.get("ticker"): p for p in pos2 if p.get("ticker")}
+
+        # Find matching pairs (same ticker on both accounts with opposite sides)
+        matched_tickers = set(acc1_positions.keys()) & set(acc2_positions.keys())
+
+        for ticker in matched_tickers:
+            p1 = acc1_positions[ticker]
+            p2 = acc2_positions[ticker]
+
+            # Verify they are opposite sides
+            side1 = p1.get("side", "")
+            side2 = p2.get("side", "")
+
+            if side1 == side2:
+                logger.warning(f"Both accounts have same side for {ticker}, skipping")
+                continue
+
+            # Determine which account is long
+            account1_is_long = side1 == "LONG"
+
+            # Get entry price (use average of both)
+            entry1 = float(p1.get("entry_price", 0))
+            entry2 = float(p2.get("entry_price", 0))
+            entry_price = (entry1 + entry2) / 2 if entry1 and entry2 else entry1 or entry2
+
+            # Get size (use smaller to be safe)
+            size1 = abs(float(p1.get("size", 0)))
+            size2 = abs(float(p2.get("size", 0)))
+            size = min(size1, size2)
+
+            # Create trade pair
+            trade = TradePair(
+                id=f"resumed_{ticker}_{datetime.now().strftime('%Y%m%d_%H%M%S')}",
+                product_id=ticker,
+                size=size,
+                leverage=self.settings.market_leverage_limits.get(ticker.upper(), 10),
+                entry_price=entry_price,
+                status=TradeStatus.OPEN,
+                opened_at=datetime.now(),  # We don't know actual open time
+                account1_is_long=account1_is_long,
+                long_entry_price=entry1 if account1_is_long else entry2,
+                short_entry_price=entry2 if account1_is_long else entry1,
+            )
+
+            # Set a random hold target (since we don't know original)
+            min_hold = self.settings.min_hold_time_minutes
+            max_hold = self.settings.max_hold_time_minutes
+            trade.target_hold_minutes = random.uniform(min_hold, max_hold)
+
+            self.active_trades[trade.id] = trade
+            logger.info(f"Resumed trade: {ticker} | Entry: ${entry_price:.2f} | Size: {size:.6f} | Acc1={side1}")
+
+        if self.active_trades:
+            logger.info(f"Resumed {len(self.active_trades)} existing trade(s)")
+        else:
+            logger.info("No matching trade pairs found to resume")
 
     async def shutdown(self) -> None:
         """Shutdown the strategy."""
