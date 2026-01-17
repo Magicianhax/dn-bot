@@ -8,6 +8,7 @@ from pydantic import Field, field_validator
 
 # Path to persist runtime settings
 SETTINGS_FILE = Path(__file__).parent.parent / "data" / "settings.json"
+TRADES_FILE = Path(__file__).parent.parent / "data" / "active_trades.json"
 
 
 class Settings(BaseSettings):
@@ -326,3 +327,57 @@ def _load_saved_settings(settings: Settings) -> None:
         print(f"Loaded saved settings from {SETTINGS_FILE}")
     except Exception as e:
         print(f"Failed to load saved settings: {e}")
+
+
+def save_active_trades(trades: dict) -> bool:
+    """Save active trades to JSON file for persistence across restarts."""
+    try:
+        TRADES_FILE.parent.mkdir(parents=True, exist_ok=True)
+        
+        # Convert trades to serializable format
+        data = {}
+        for trade_id, trade in trades.items():
+            data[trade_id] = {
+                "id": trade.id,
+                "product_id": trade.product_id,
+                "size": trade.size,
+                "leverage": trade.leverage,
+                "entry_price": trade.entry_price,
+                "long_entry_price": trade.long_entry_price,
+                "short_entry_price": trade.short_entry_price,
+                "account1_is_long": trade.account1_is_long,
+                "opened_at": trade.opened_at.isoformat(),
+                "target_hold_minutes": trade.target_hold_minutes,
+            }
+        
+        with open(TRADES_FILE, "w") as f:
+            json.dump(data, f, indent=2)
+        
+        return True
+    except Exception as e:
+        print(f"Failed to save active trades: {e}")
+        return False
+
+
+def load_active_trades() -> dict:
+    """Load saved active trades from JSON file."""
+    if not TRADES_FILE.exists():
+        return {}
+    
+    try:
+        with open(TRADES_FILE, "r") as f:
+            data = json.load(f)
+        print(f"Loaded {len(data)} saved trade(s) from {TRADES_FILE}")
+        return data
+    except Exception as e:
+        print(f"Failed to load active trades: {e}")
+        return {}
+
+
+def clear_active_trades() -> None:
+    """Clear the saved active trades file."""
+    try:
+        if TRADES_FILE.exists():
+            TRADES_FILE.unlink()
+    except Exception as e:
+        print(f"Failed to clear active trades: {e}")

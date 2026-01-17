@@ -13,7 +13,7 @@ from enum import Enum
 from ethereal import AsyncRESTClient
 from eth_account import Account
 
-from ..config import Settings, get_settings
+from ..config import Settings, get_settings, save_active_trades, load_active_trades, clear_active_trades
 from ..utils.logger import get_logger
 
 logger = get_logger("ethereal.points")
@@ -970,12 +970,21 @@ class PointsFarmingStrategy:
 
         logger.info("Checking for existing positions to resume...")
 
+        # Load saved trade data (for timing info)
+        saved_trades = load_active_trades()
+        saved_by_ticker = {}
+        for trade_id, trade_data in saved_trades.items():
+            ticker = trade_data.get("product_id", "")
+            if ticker:
+                saved_by_ticker[ticker] = trade_data
+
         # Get positions from both accounts
         pos1 = await self.account1.list_positions()
         pos2 = await self.account2.list_positions()
 
         if not pos1 and not pos2:
             logger.info("No existing positions found")
+            clear_active_trades()  # Clean up stale saved trades
             return
 
         # Build a map of positions by ticker for each account
@@ -1010,32 +1019,54 @@ class PointsFarmingStrategy:
             size2 = abs(float(p2.get("size", 0)))
             size = min(size1, size2)
 
+            # Check if we have saved data for this trade
+            saved = saved_by_ticker.get(ticker, {})
+            
+            # Use saved opened_at if available, otherwise use now
+            if saved.get("opened_at"):
+                try:
+                    opened_at = datetime.fromisoformat(saved["opened_at"])
+                except:
+                    opened_at = datetime.now()
+            else:
+                opened_at = datetime.now()
+            
+            # Use saved target_hold_minutes if available
+            target_hold = saved.get("target_hold_minutes", 0)
+            if target_hold <= 0:
+                min_hold = self.settings.min_hold_time_minutes
+                max_hold = self.settings.max_hold_time_minutes
+                target_hold = random.uniform(min_hold, max_hold)
+
             # Create trade pair
             trade = TradePair(
-                id=f"resumed_{ticker}_{datetime.now().strftime('%Y%m%d_%H%M%S')}",
+                id=saved.get("id", f"resumed_{ticker}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"),
                 product_id=ticker,
                 size=size,
                 leverage=self.settings.market_leverage_limits.get(ticker.upper(), 10),
                 entry_price=entry_price,
                 status=TradeStatus.OPEN,
-                opened_at=datetime.now(),  # We don't know actual open time
+                opened_at=opened_at,
                 account1_is_long=account1_is_long,
                 long_entry_price=entry1 if account1_is_long else entry2,
                 short_entry_price=entry2 if account1_is_long else entry1,
+                target_hold_minutes=target_hold,
             )
 
-            # Set a random hold target (since we don't know original)
-            min_hold = self.settings.min_hold_time_minutes
-            max_hold = self.settings.max_hold_time_minutes
-            trade.target_hold_minutes = random.uniform(min_hold, max_hold)
-
             self.active_trades[trade.id] = trade
-            logger.info(f"Resumed trade: {ticker} | Entry: ${entry_price:.2f} | Size: {size:.6f} | Acc1={side1}")
+            
+            # Calculate time already held
+            held_minutes = trade.hold_time_minutes
+            remaining = max(0, target_hold - held_minutes)
+            logger.info(f"Resumed trade: {ticker} | Entry: ${entry_price:.2f} | Held: {held_minutes:.1f}m | Remaining: {remaining:.1f}m")
 
         if self.active_trades:
             logger.info(f"Resumed {len(self.active_trades)} existing trade(s)")
+            # Save the updated trades
+            save_active_trades(self.active_trades)
         else:
             logger.info("No matching trade pairs found to resume")
+            clear_active_trades()
 
     async def shutdown(self) -> None:
         """Shutdown the strategy."""
@@ -1335,6 +1366,9 @@ class PointsFarmingStrategy:
 
         logger.info(f"Trade opened: {trade.id} | {product_id} @ ${price:.2f} | Hold: {trade.target_hold_minutes:.1f}m | TP: +/-{tp_percent*100:.1f}%")
 
+        # Save active trades to file for persistence
+        save_active_trades(self.active_trades)
+
         if self._on_trade_open:
             self._on_trade_open(trade)
 
@@ -1496,6 +1530,9 @@ class PointsFarmingStrategy:
         # Move to completed
         del self.active_trades[trade_id]
         self.completed_trades.append(trade)
+
+        # Update saved trades (remove closed trade)
+        save_active_trades(self.active_trades)
 
         logger.info(
             f"Trade closed: {trade_id} | PnL: ${trade.total_pnl:.2f} | "
