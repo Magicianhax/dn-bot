@@ -138,6 +138,7 @@ class AccountClient:
                 ticker = getattr(p, 'ticker', None) or getattr(p, 'symbol', '')
                 product_id = str(getattr(p, 'id', ''))
                 onchain_id = getattr(p, 'onchain_id', None) or getattr(p, 'onchainId', None) or getattr(p, 'product_id_onchain', None)
+                max_leverage = float(getattr(p, 'max_leverage', 10) or 10)
                 if ticker and product_id:
                     self._products[ticker] = {
                         'id': product_id,
@@ -145,6 +146,7 @@ class AccountClient:
                         'onchain_id': onchain_id,
                         'lot_size': float(getattr(p, 'lot_size', 0.0001) or 0.0001),
                         'tick_size': float(getattr(p, 'tick_size', 0.01) or 0.01),
+                        'max_leverage': int(max_leverage),
                     }
             # Log first product to see available fields
             if products:
@@ -322,6 +324,23 @@ class AccountClient:
         """Get tick size (price increment) for a product."""
         product = self._products.get(ticker)
         return float(product['tick_size']) if product else 0.01
+
+    def get_max_leverage(self, ticker: str) -> int:
+        """Get max leverage for a product."""
+        product = self._products.get(ticker)
+        return int(product.get('max_leverage', 10)) if product else 10
+
+    def get_all_products(self) -> list[dict]:
+        """Get all products with their info (for API)."""
+        return [
+            {
+                'ticker': ticker,
+                'max_leverage': info.get('max_leverage', 10),
+                'lot_size': info.get('lot_size', 0.0001),
+                'tick_size': info.get('tick_size', 0.01),
+            }
+            for ticker, info in self._products.items()
+        ]
 
     def round_price_to_tick(self, price: float, ticker: str) -> float:
         """Round price to the nearest tick size for a product."""
@@ -969,17 +988,25 @@ class PointsFarmingStrategy:
                     logger.info(f"New day detected. Resetting daily trade counter (was {self.stats.daily_trades})")
                     self.stats.daily_trades = 0
                     self.stats.daily_trades_date = today
-                
-                # Get max daily trades setting
+
+                # Get settings
                 max_daily = getattr(self.settings, 'max_daily_trades', 100)
-                
-                # Only open new trade if:
-                # 1. No active trades currently (wait for current to close)
+                max_concurrent = getattr(self.settings, 'max_concurrent_trades', 2)
+
+                # Open new trades if:
+                # 1. Have room for more trades (below max_concurrent_trades)
                 # 2. Haven't reached daily max trades limit
-                # 3. Enough time has passed since last trade closed
-                if (len(self.active_trades) == 0 and 
-                    self.stats.daily_trades < max_daily):
-                    await self._open_new_trade()
+                # 3. Enough time has passed since last trade
+                current_trade_count = len(self.active_trades)
+                trades_needed = max_concurrent - current_trade_count
+
+                if trades_needed > 0 and self.stats.daily_trades < max_daily:
+                    # Calculate how many more trades we can open (respecting daily limit)
+                    remaining_daily = max_daily - self.stats.daily_trades
+                    trades_to_open = min(trades_needed, remaining_daily)
+
+                    if trades_to_open > 0:
+                        await self._open_multiple_trades(trades_to_open)
 
                 # Monitor active trades (check SL/TP/TIME conditions)
                 if len(self.active_trades) > 0:
@@ -1014,27 +1041,58 @@ class PointsFarmingStrategy:
         ]
         await asyncio.gather(*close_tasks, return_exceptions=True)
 
-    async def _open_new_trade(self) -> None:
-        """Open a new long/short trade pair."""
+    def _get_available_pairs(self) -> list[str]:
+        """Get trading pairs that don't have active trades."""
+        all_pairs = self.settings.trading_pairs_list
+        active_pairs = {trade.product_id for trade in self.active_trades.values()}
+        return [p for p in all_pairs if p not in active_pairs]
+
+    async def _open_multiple_trades(self, count: int) -> None:
+        """Open multiple trades with different pairs.
+
+        Args:
+            count: Number of trades to open (will be limited to available pairs)
+        """
         if not self.account1 or not self.account2:
             return
 
-        # Double-check no active trades (prevent race conditions)
-        if len(self.active_trades) > 0:
-            return
-
-        # Check delay since last trade (random delay between min and max)
+        # Check delay since last trade
         if self.completed_trades:
             last_trade = self.completed_trades[-1]
             time_since = (datetime.now() - last_trade.opened_at).total_seconds()
             if time_since < self.stats.next_trade_delay:
                 return
 
+        # Get pairs not already in active trades
+        available_pairs = self._get_available_pairs()
+        if not available_pairs:
+            logger.info("No available pairs (all configured pairs have active trades)")
+            return
+
+        # Limit to available pairs and randomize selection
+        random.shuffle(available_pairs)
+        pairs_to_trade = available_pairs[:count]
+
+        logger.info(f"Opening {len(pairs_to_trade)} trade(s) with pairs: {pairs_to_trade}")
+
+        # Open trades sequentially to properly handle position sizing
+        for product_id in pairs_to_trade:
+            await self._open_new_trade(product_id)
+
+    async def _open_new_trade(self, product_id: str = None) -> None:
+        """Open a new long/short trade pair.
+
+        Args:
+            product_id: Specific pair to trade. If None, randomly selects from available pairs.
+        """
+        if not self.account1 or not self.account2:
+            return
+
         # Get account balances
         bal1 = await self.account1.get_balance()
         bal2 = await self.account2.get_balance()
         min_balance = min(bal1, bal2)
-        
+
         # Check minimum balance threshold
         min_threshold = getattr(self.settings, 'min_balance_threshold', 10.0)
         if min_balance < min_threshold:
@@ -1042,19 +1100,25 @@ class PointsFarmingStrategy:
             self.running = False
             return
 
-        # Select a random pair from configured pairs
-        pairs = self.settings.trading_pairs_list
-        if not pairs:
-            logger.error("No trading pairs configured")
+        # Select a pair if not specified
+        if product_id is None:
+            available_pairs = self._get_available_pairs()
+            if not available_pairs:
+                logger.warning("No available pairs for trading")
+                return
+            product_id = random.choice(available_pairs)
+
+        # Verify this pair isn't already active
+        active_pairs = {trade.product_id for trade in self.active_trades.values()}
+        if product_id in active_pairs:
+            logger.warning(f"Pair {product_id} already has an active trade, skipping")
             return
 
-        product_id = random.choice(pairs)
-        
         # Randomly decide which account goes long vs short (anti-sybil)
         account1_goes_long = random.choice([True, False])
         long_account = self.account1 if account1_goes_long else self.account2
         short_account = self.account2 if account1_goes_long else self.account1
-        
+
         direction_info = "Acc1=LONG, Acc2=SHORT" if account1_goes_long else "Acc1=SHORT, Acc2=LONG"
         logger.info(f"Opening trade pair for {product_id} ({direction_info})")
 
@@ -1064,17 +1128,34 @@ class PointsFarmingStrategy:
             logger.error(f"Could not get price for {product_id}")
             return
 
-        # Calculate position size
+        # Get effective leverage for this market (respects market-specific limits from API)
+        # First check if we have max leverage from the products cache (from API)
+        api_max_lev = long_account.get_max_leverage(product_id)
+        # Also check config's market_max_leverage setting as fallback
+        config_max_lev = self.settings.market_leverage_limits.get(product_id.upper(), 10)
+        # Use the lower of the two to be safe
+        max_lev_for_market = min(api_max_lev, config_max_lev) if config_max_lev > 0 else api_max_lev
+        # Effective leverage is the lower of user's target and market max
+        effective_leverage = min(self.settings.leverage, max_lev_for_market)
+
+        if effective_leverage < self.settings.leverage:
+            logger.info(f"Leverage adjusted for {product_id}: {self.settings.leverage}x -> {effective_leverage}x (market max: {max_lev_for_market}x)")
+
+        # Calculate position size with consideration for multiple concurrent trades
+        max_concurrent = getattr(self.settings, 'max_concurrent_trades', 2)
         use_full = getattr(self.settings, 'use_full_balance', True)
+
         if use_full or self.settings.position_size <= 0:
-            # Use 80% of smaller balance to leave room for margin requirements and fees
-            safety_buffer = 0.80
+            # Use portion of balance based on number of concurrent trades
+            # 80% safety buffer, divided by max concurrent trades
+            safety_buffer = 0.80 / max_concurrent
             usable_balance = min_balance * safety_buffer
-            position_usd = usable_balance * self.settings.leverage
-            logger.info(f"Balances: Acc1=${bal1:.2f}, Acc2=${bal2:.2f} (using min ${min_balance:.2f} x {safety_buffer:.0%})")
-            logger.info(f"Position: ${usable_balance:.2f} x {self.settings.leverage}x = ${position_usd:.2f}")
+            position_usd = usable_balance * effective_leverage
+            logger.info(f"Balances: Acc1=${bal1:.2f}, Acc2=${bal2:.2f} (using min ${min_balance:.2f} x {safety_buffer:.1%} for {max_concurrent} concurrent trades)")
+            logger.info(f"Position: ${usable_balance:.2f} x {effective_leverage}x = ${position_usd:.2f}")
         else:
-            position_usd = self.settings.position_size
+            # Fixed position size - divide by concurrent trades
+            position_usd = self.settings.position_size / max_concurrent
 
         # Calculate size and round to lot size
         lot_size = long_account.get_lot_size(product_id)
@@ -1093,7 +1174,7 @@ class PointsFarmingStrategy:
             id=f"trade_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{product_id}",
             product_id=product_id,
             size=size,
-            leverage=self.settings.leverage,
+            leverage=effective_leverage,
             entry_price=price,
         )
 

@@ -52,6 +52,8 @@ class SettingsUpdate(BaseModel):
     use_full_balance: Optional[bool] = None
     min_balance_threshold: Optional[float] = None
     leverage: Optional[int] = None
+    max_concurrent_trades: Optional[int] = None
+    market_max_leverage: Optional[str] = None
     stop_loss_percent: Optional[float] = None
     take_profit_percent: Optional[float] = None
     min_hold_time_minutes: Optional[int] = None
@@ -136,6 +138,8 @@ def register_routes(app: FastAPI):
                 "trading_pairs": settings.trading_pairs,
                 "position_size": settings.position_size,
                 "leverage": settings.leverage,
+                "max_concurrent_trades": getattr(settings, 'max_concurrent_trades', 2),
+                "market_max_leverage": getattr(settings, 'market_max_leverage', 'BTCUSD:20,ETHUSD:20'),
                 "stop_loss_percent": settings.stop_loss_percent * 100,
                 "take_profit_percent": settings.take_profit_percent * 100,
                 "min_hold_time_minutes": settings.min_hold_time_minutes,
@@ -248,6 +252,8 @@ def register_routes(app: FastAPI):
             "use_full_balance": getattr(settings, 'use_full_balance', True),
             "min_balance_threshold": getattr(settings, 'min_balance_threshold', 10.0),
             "leverage": settings.leverage,
+            "max_concurrent_trades": getattr(settings, 'max_concurrent_trades', 2),
+            "market_max_leverage": getattr(settings, 'market_max_leverage', 'BTCUSD:20,ETHUSD:20'),
             "stop_loss_percent": settings.stop_loss_percent * 100,
             "take_profit_percent": settings.take_profit_percent * 100,
             "min_hold_time_minutes": settings.min_hold_time_minutes,
@@ -259,20 +265,43 @@ def register_routes(app: FastAPI):
     
     @app.get("/api/products/available")
     async def get_available_products():
-        """Get list of all available trading products."""
+        """Get list of all available trading products with their max leverage."""
         global _strategy
-        
-        all_products = [
-            "BTCUSD", "ETHUSD", "SOLUSD", "ARBUSD", "AVAXUSD",
-            "BNBUSD", "DOGEUSD", "LINKUSD", "OPUSD", "PENUSD",
-            "SUIUSD", "XRPUSD"
-        ]
-        
-        # If strategy is running, get actual products
+
+        products_info = []
+
+        # Try to get products from strategy's account client
         if _strategy and _strategy.account1 and _strategy.account1._products:
-            all_products = list(_strategy.account1._products.keys())
-        
-        return {"products": all_products}
+            products_info = _strategy.account1.get_all_products()
+        else:
+            # Fallback to hardcoded defaults with known leverage limits
+            products_info = [
+                {"ticker": "BTCUSD", "max_leverage": 20, "lot_size": 0.00001, "tick_size": 1},
+                {"ticker": "ETHUSD", "max_leverage": 20, "lot_size": 0.0001, "tick_size": 0.1},
+                {"ticker": "SOLUSD", "max_leverage": 10, "lot_size": 0.001, "tick_size": 0.01},
+                {"ticker": "HYPEUSD", "max_leverage": 10, "lot_size": 0.01, "tick_size": 0.001},
+                {"ticker": "SUIUSD", "max_leverage": 10, "lot_size": 0.1, "tick_size": 0.0001},
+                {"ticker": "XRPUSD", "max_leverage": 10, "lot_size": 0.1, "tick_size": 0.0001},
+                {"ticker": "AAVEUSD", "max_leverage": 5, "lot_size": 0.001, "tick_size": 0.01},
+                {"ticker": "ENAUSD", "max_leverage": 5, "lot_size": 1, "tick_size": 0.00001},
+                {"ticker": "FARTCOINUSD", "max_leverage": 5, "lot_size": 1, "tick_size": 0.00001},
+                {"ticker": "PUMPUSD", "max_leverage": 5, "lot_size": 100, "tick_size": 0.0000001},
+                {"ticker": "ZECUSD", "max_leverage": 5, "lot_size": 0.001, "tick_size": 0.01},
+                {"ticker": "MONUSD", "max_leverage": 5, "lot_size": 10, "tick_size": 0.000001},
+            ]
+
+        # Sort by max leverage (highest first), then by ticker
+        products_info.sort(key=lambda x: (-x.get("max_leverage", 10), x.get("ticker", "")))
+
+        # Get current selected pairs
+        settings = get_settings()
+        selected_pairs = settings.trading_pairs_list
+
+        # Add selected flag
+        for p in products_info:
+            p["selected"] = p["ticker"] in selected_pairs
+
+        return {"products": products_info}
     
     @app.get("/api/logs")
     async def get_logs():
@@ -297,6 +326,10 @@ def register_routes(app: FastAPI):
                 settings.min_balance_threshold = update.min_balance_threshold
             if update.leverage is not None:
                 settings.leverage = update.leverage
+            if update.max_concurrent_trades is not None:
+                settings.max_concurrent_trades = update.max_concurrent_trades
+            if update.market_max_leverage is not None:
+                settings.market_max_leverage = update.market_max_leverage
             if update.stop_loss_percent is not None:
                 settings.stop_loss_percent = update.stop_loss_percent / 100  # Convert from %
             if update.take_profit_percent is not None:
