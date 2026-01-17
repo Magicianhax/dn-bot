@@ -1128,18 +1128,19 @@ class PointsFarmingStrategy:
             logger.error(f"Could not get price for {product_id}")
             return
 
-        # Get effective leverage for this market (respects market-specific limits from API)
-        # First check if we have max leverage from the products cache (from API)
+        # Get effective leverage for this market
+        # 1. Get API max leverage for the market
         api_max_lev = long_account.get_max_leverage(product_id)
-        # Also check config's market_max_leverage setting as fallback
-        config_max_lev = self.settings.market_leverage_limits.get(product_id.upper(), 10)
-        # Use the lower of the two to be safe
-        max_lev_for_market = min(api_max_lev, config_max_lev) if config_max_lev > 0 else api_max_lev
-        # Effective leverage is the lower of user's target and market max
-        effective_leverage = min(self.settings.leverage, max_lev_for_market)
+        # 2. Get user's custom leverage setting for this specific market (from settings modal)
+        user_lev_for_market = self.settings.market_leverage_limits.get(product_id.upper(), 0)
+        # 3. If user set a custom leverage for this pair, use it (capped at API max)
+        #    Otherwise fall back to the global target leverage setting
+        if user_lev_for_market > 0:
+            effective_leverage = min(user_lev_for_market, api_max_lev)
+        else:
+            effective_leverage = min(self.settings.leverage, api_max_lev)
 
-        if effective_leverage < self.settings.leverage:
-            logger.info(f"Leverage adjusted for {product_id}: {self.settings.leverage}x -> {effective_leverage}x (market max: {max_lev_for_market}x)")
+        logger.info(f"Leverage for {product_id}: {effective_leverage}x (user setting: {user_lev_for_market}x, market max: {api_max_lev}x)")
 
         # Calculate position size with consideration for multiple concurrent trades
         max_concurrent = getattr(self.settings, 'max_concurrent_trades', 2)

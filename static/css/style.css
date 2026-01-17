@@ -962,6 +962,10 @@ body {
     min-width: 0;
 }
 
+.form-row .form-group.full-width {
+    flex: 1 1 100%;
+}
+
 .form-row:last-child {
     margin-bottom: 0;
 }
@@ -1022,6 +1026,13 @@ body {
     gap: var(--space-2);
 }
 
+/* Pairs grid with leverage info */
+.pairs-grid-leverage {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
+    gap: var(--space-2);
+}
+
 .pair-checkbox {
     display: flex;
     align-items: center;
@@ -1053,6 +1064,117 @@ body {
     font-family: var(--font-mono);
     font-size: 11px;
     font-weight: 500;
+}
+
+/* Pair card with leverage badge */
+.pair-card {
+    display: flex;
+    flex-direction: column;
+    padding: var(--space-2) var(--space-3);
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+
+.pair-card:hover {
+    border-color: var(--border-default);
+    background: var(--bg-card-hover);
+}
+
+.pair-card.selected {
+    border-color: var(--accent-primary);
+    background: var(--accent-glow);
+}
+
+.pair-card-header {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+}
+
+.pair-card input[type="checkbox"] {
+    width: 14px;
+    height: 14px;
+    accent-color: var(--accent-primary);
+}
+
+.pair-card .pair-name {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.pair-card .pair-leverage {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--text-muted);
+    margin-top: 2px;
+    margin-left: 22px;
+}
+
+.pair-card .pair-leverage .lev-value {
+    font-weight: 600;
+}
+
+.pair-card .pair-leverage .lev-20x {
+    color: var(--success);
+}
+
+.pair-card .pair-leverage .lev-10x {
+    color: var(--warning);
+}
+
+.pair-card .pair-leverage .lev-5x {
+    color: var(--danger);
+}
+
+/* Leverage input in pair card */
+.pair-leverage-input {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    margin-top: 4px;
+    margin-left: 22px;
+}
+
+.pair-leverage-input .lev-input {
+    width: 45px;
+    font-family: var(--font-mono);
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-primary);
+    background: var(--bg-input);
+    border: 1px solid var(--border-default);
+    border-radius: 4px;
+    padding: 3px 6px;
+    text-align: center;
+    outline: none;
+    transition: all 0.15s ease;
+}
+
+.pair-leverage-input .lev-input:focus {
+    border-color: var(--accent-primary);
+    box-shadow: 0 0 0 2px var(--accent-glow);
+}
+
+.pair-leverage-input .lev-max {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    font-weight: 600;
+}
+
+.pair-leverage-input .lev-max.lev-20x { color: var(--success); }
+.pair-leverage-input .lev-max.lev-10x { color: var(--warning); }
+.pair-leverage-input .lev-max.lev-5x { color: var(--danger); }
+
+.section-title .hint {
+    font-size: 10px;
+    color: var(--text-muted);
+    font-weight: 400;
+    margin-left: 8px;
 }
 
 .modal-actions {

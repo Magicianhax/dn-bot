@@ -34,10 +34,11 @@ class Dashboard {
             settingPairs: document.getElementById('setting-pairs'),
             settingPosition: document.getElementById('setting-position'),
             settingLeverage: document.getElementById('setting-leverage'),
+            settingConcurrent: document.getElementById('setting-concurrent'),
             settingSltp: document.getElementById('setting-sltp'),
             settingHold: document.getElementById('setting-hold'),
             settingMaxTrades: document.getElementById('setting-max-trades'),
-            
+
             // Settings Modal
             settingsModal: document.getElementById('settings-modal'),
             pairsCheckboxes: document.getElementById('pairs-checkboxes'),
@@ -45,6 +46,7 @@ class Dashboard {
             inputPosition: document.getElementById('input-position'),
             inputMinBalance: document.getElementById('input-min-balance'),
             inputLeverage: document.getElementById('input-leverage'),
+            inputConcurrentTrades: document.getElementById('input-concurrent-trades'),
             inputSl: document.getElementById('input-sl'),
             inputTp: document.getElementById('input-tp'),
             inputMinHold: document.getElementById('input-min-hold'),
@@ -248,12 +250,12 @@ class Dashboard {
         try {
             const response = await fetch('/api/trades/active');
             const data = await response.json();
-            
+
             if (data.trades && data.trades.length > 0) {
-                const trade = data.trades[0];
-                this.renderActiveTrade(trade);
+                // Render all active trades (supports multiple concurrent trades)
+                this.elements.activeTrade.innerHTML = data.trades.map(trade => this.renderActiveTrade(trade)).join('');
             } else {
-                this.elements.activeTrade.innerHTML = '<div class="no-trade">No active trade</div>';
+                this.elements.activeTrade.innerHTML = '<div class="no-trade">No active trades</div>';
             }
         } catch (error) {
             console.error('Failed to fetch active trades:', error);
@@ -263,11 +265,11 @@ class Dashboard {
     renderActiveTrade(trade) {
         const pnl = trade.total_pnl || 0;
         const pnlClass = pnl >= 0 ? 'positive' : 'negative';
-        
+
         const acc1Side = trade.account1_is_long ? 'LONG' : 'SHORT';
         const acc2Side = trade.account1_is_long ? 'SHORT' : 'LONG';
-        
-        this.elements.activeTrade.innerHTML = `
+
+        return `
             <div class="active-trade-compact">
                 <div class="trade-info-row">
                     <span class="trade-ticker">${trade.product_id}</span>
@@ -525,7 +527,7 @@ class Dashboard {
     }
     
     async openSettingsModal() {
-        // Fetch available products for checkboxes
+        // Fetch available products with leverage info
         try {
             const resp = await fetch('/api/products/available');
             const data = await resp.json();
@@ -533,22 +535,39 @@ class Dashboard {
         } catch (e) {
             console.error('Failed to fetch products:', e);
         }
-        
+
         // Populate form with current settings
         const s = this.currentSettings;
+
+        // Set selected pairs with custom leverage
+        const selectedPairs = (s.trading_pairs || '').split(',').map(p => p.trim().toUpperCase());
+        const leverageSettings = this.parseLeverageSettings(s.market_max_leverage || '');
         
-        // Set selected pairs
-        const selectedPairs = (s.trading_pairs || '').split(',').map(p => p.trim());
-        document.querySelectorAll('.pair-checkbox input').forEach(cb => {
-            cb.checked = selectedPairs.includes(cb.value);
-            cb.parentElement.classList.toggle('selected', cb.checked);
+        document.querySelectorAll('.pair-card').forEach(card => {
+            const ticker = card.dataset.ticker;
+            const cb = card.querySelector('.pair-checkbox');
+            const levInput = card.querySelector('.lev-input');
+            const maxLev = parseInt(card.dataset.maxLeverage) || 10;
+            
+            const isSelected = selectedPairs.includes(ticker);
+            if (cb) {
+                cb.checked = isSelected;
+                card.classList.toggle('selected', isSelected);
+            }
+            
+            // Set custom leverage if saved, otherwise use max
+            if (levInput) {
+                const savedLev = leverageSettings[ticker] || maxLev;
+                levInput.value = Math.min(savedLev, maxLev);
+            }
         });
-        
+
         this.elements.inputUseFullBalance.checked = s.use_full_balance !== false;
         this.elements.inputPosition.value = s.position_size || 50;
         this.elements.inputPosition.disabled = this.elements.inputUseFullBalance.checked;
         this.elements.inputMinBalance.value = s.min_balance_threshold || 10;
         this.elements.inputLeverage.value = s.leverage || 10;
+        this.elements.inputConcurrentTrades.value = s.max_concurrent_trades || 2;
         this.elements.inputSl.value = s.stop_loss_percent || 5;
         this.elements.inputTp.value = s.take_profit_percent || 5;
         this.elements.inputMinHold.value = s.min_hold_time_minutes || 30;
@@ -556,29 +575,89 @@ class Dashboard {
         this.elements.inputMinDelay.value = s.min_trade_delay_seconds || 60;
         this.elements.inputMaxDelay.value = s.max_trade_delay_seconds || 300;
         this.elements.inputMaxTrades.value = s.max_daily_trades || 100;
-        
+
         this.elements.settingsModal.style.display = 'flex';
     }
     
     renderPairCheckboxes(products) {
         const container = this.elements.pairsCheckboxes;
-        container.innerHTML = products.map(p => `
-            <label class="pair-checkbox">
-                <input type="checkbox" value="${p}">
-                <span>${p.replace('USD', '')}</span>
-            </label>
-        `).join('');
-        
+
+        // Get current leverage settings from config
+        const currentLevSettings = this.parseLeverageSettings(this.currentSettings.market_max_leverage || '');
+
+        // Products can be array of strings (old format) or array of objects with leverage info (new format)
+        container.innerHTML = products.map(p => {
+            const ticker = typeof p === 'string' ? p : p.ticker;
+            const maxLev = typeof p === 'string' ? 10 : (p.max_leverage || 10);
+            const displayName = ticker.replace('USD', '');
+            // Use saved leverage or default to max
+            const savedLev = currentLevSettings[ticker] || maxLev;
+
+            // Color class based on max leverage
+            let levClass = 'lev-5x';
+            if (maxLev >= 20) levClass = 'lev-20x';
+            else if (maxLev >= 10) levClass = 'lev-10x';
+
+            return `
+                <div class="pair-card" data-ticker="${ticker}" data-max-leverage="${maxLev}">
+                    <div class="pair-card-header">
+                        <input type="checkbox" class="pair-checkbox" value="${ticker}">
+                        <span class="pair-name">${displayName}</span>
+                    </div>
+                    <div class="pair-leverage-input">
+                        <input type="number" class="lev-input" min="1" max="${maxLev}" value="${savedLev}" title="Leverage (max ${maxLev}x)">
+                        <span class="lev-max ${levClass}">/ ${maxLev}x</span>
+                    </div>
+                </div>
+            `;
+        }).join('');
+
+        // Store products for later use
+        this._productsWithLeverage = products;
+
         // Add click handlers
-        container.querySelectorAll('.pair-checkbox').forEach(label => {
-            label.addEventListener('click', (e) => {
+        container.querySelectorAll('.pair-card').forEach(card => {
+            const checkbox = card.querySelector('.pair-checkbox');
+            const levInput = card.querySelector('.lev-input');
+            const maxLev = parseInt(card.dataset.maxLeverage) || 10;
+
+            // Click on card toggles selection (but not on inputs)
+            card.addEventListener('click', (e) => {
                 if (e.target.tagName !== 'INPUT') {
-                    const cb = label.querySelector('input');
-                    cb.checked = !cb.checked;
+                    checkbox.checked = !checkbox.checked;
+                    card.classList.toggle('selected', checkbox.checked);
                 }
-                label.classList.toggle('selected', label.querySelector('input').checked);
             });
+
+            // Checkbox change
+            checkbox.addEventListener('change', () => {
+                card.classList.toggle('selected', checkbox.checked);
+            });
+
+            // Validate leverage input
+            levInput.addEventListener('change', () => {
+                let val = parseInt(levInput.value) || 1;
+                if (val < 1) val = 1;
+                if (val > maxLev) val = maxLev;
+                levInput.value = val;
+            });
+
+            // Stop propagation on input click
+            levInput.addEventListener('click', (e) => e.stopPropagation());
         });
+    }
+
+    parseLeverageSettings(leverageStr) {
+        // Parse "BTCUSD:15,ETHUSD:10" into {BTCUSD: 15, ETHUSD: 10}
+        const result = {};
+        if (!leverageStr) return result;
+        leverageStr.split(',').forEach(item => {
+            const [ticker, lev] = item.split(':');
+            if (ticker && lev) {
+                result[ticker.trim().toUpperCase()] = parseInt(lev.trim()) || 10;
+            }
+        });
+        return result;
     }
     
     closeSettingsModal() {
@@ -586,23 +665,37 @@ class Dashboard {
     }
     
     async saveSettings() {
-        // Get selected pairs from checkboxes
+        // Get selected pairs from pair-card elements with custom leverage
         const selectedPairs = [];
-        document.querySelectorAll('.pair-checkbox input:checked').forEach(cb => {
-            selectedPairs.push(cb.value);
+        const leverageLimits = [];
+
+        document.querySelectorAll('.pair-card').forEach(card => {
+            const cb = card.querySelector('.pair-checkbox');
+            if (cb && cb.checked) {
+                const ticker = card.dataset.ticker;
+                const levInput = card.querySelector('.lev-input');
+                const customLev = parseInt(levInput?.value) || parseInt(card.dataset.maxLeverage) || 10;
+                selectedPairs.push(ticker);
+                leverageLimits.push(`${ticker}:${customLev}`);
+            }
         });
-        
+
         if (selectedPairs.length === 0) {
             alert('Please select at least one trading pair');
             return;
         }
-        
+
+        // Build market_max_leverage from selected pairs with custom leverage
+        const marketMaxLeverage = leverageLimits.join(',');
+
         const newSettings = {
             trading_pairs: selectedPairs.join(','),
             use_full_balance: this.elements.inputUseFullBalance.checked,
             position_size: parseFloat(this.elements.inputPosition.value) || 50,
             min_balance_threshold: parseFloat(this.elements.inputMinBalance.value) || 10,
             leverage: parseInt(this.elements.inputLeverage.value) || 10,
+            max_concurrent_trades: parseInt(this.elements.inputConcurrentTrades.value) || 2,
+            market_max_leverage: marketMaxLeverage,
             stop_loss_percent: parseFloat(this.elements.inputSl.value) || 5,
             take_profit_percent: parseFloat(this.elements.inputTp.value) || 5,
             min_hold_time_minutes: parseInt(this.elements.inputMinHold.value) || 30,
@@ -637,14 +730,15 @@ class Dashboard {
     
     updateSettingsDisplay(settings) {
         this.elements.settingPairs.textContent = settings.trading_pairs || '-';
-        
+
         if (settings.use_full_balance) {
             this.elements.settingPosition.textContent = 'Full Balance';
         } else {
             this.elements.settingPosition.textContent = this.formatMoney(settings.position_size || 0);
         }
-        
+
         this.elements.settingLeverage.textContent = `${settings.leverage || 0}x`;
+        this.elements.settingConcurrent.textContent = settings.max_concurrent_trades || 2;
         this.elements.settingSltp.textContent = `${settings.stop_loss_percent || 0}% / ${settings.take_profit_percent || 0}%`;
         this.elements.settingHold.textContent = `${settings.min_hold_time_minutes || 0}-${settings.max_hold_time_minutes || 0}m`;
         this.elements.settingMaxTrades.textContent = settings.max_daily_trades || 0;
